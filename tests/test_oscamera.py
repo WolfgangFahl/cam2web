@@ -85,7 +85,7 @@ class TestCamera(Basetest):
             "magnify": self.camera.magnify(5),
         }
         expected_grids = {
-            "full": Grid(3888, 2592, 0),
+            "full": self.camera.reference_grid(),
             "liveview": Grid(768, 512, 0),
             "magnify": Grid(768, 512, 0),
         }

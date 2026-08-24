@@ -48,6 +48,9 @@ test = [
   "green",
 ]
 
+[project.scripts]
+cam2web = "cam.cam2web_cmd:main"
+
 [tool.hatch.build.targets.wheel]
 only-include = ["cam"]
 
