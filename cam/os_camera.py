@@ -36,8 +36,10 @@ class OsCamera(Camera):
         Returns:
             the Grid of my reference picture
         """
+        grid = None
         Camera.open(self)
-        grid = self.reference_grid()
+        if self.ready():
+            grid = self.reference_grid()
         return grid
 
     def reference_path(self) -> str:

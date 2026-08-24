@@ -63,9 +63,12 @@ class Camera:
         open the camera's device once
         """
         if not self.opened:
-            self.device.init()
-            self.config = self.device.get_config()
-            self.opened = True
+            try:
+                self.device.init()
+                self.config = self.device.get_config()
+                self.opened = True
+            except Exception as error:
+                self.error = error
 
     def close(self):
         """

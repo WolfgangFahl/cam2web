@@ -71,7 +71,10 @@ class TestCamera(Basetest):
         if self.debug:
             print(f"{name}: {grid}")
 
-    @unittest.skipIf(not os_camera().ready(), "no physical camera device available")
+    @unittest.skipIf(
+        Basetest.inPublicCI() or not os_camera().ready(),
+        "no physical camera device available",
+    )
     def testCamera(self):
         """
         test a real camera if available
