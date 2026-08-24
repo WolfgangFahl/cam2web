@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cam2web"
+description = "gphoto2 camera web interface"
+authors = [
+  {name = "Wolfgang Fahl", email = "wf@bitplan.com"}
+]
+maintainers = [
+  {name = "Wolfgang Fahl", email = "wf@bitplan.com"}
+]
+readme = "README.md"
+license = "Apache-2.0"
+dependencies = [
+  # https://pypi.org/project/gphoto2/
+  "gphoto2>=2.5.0",
+  # https://pypi.org/project/Pillow/
+  "Pillow>=10.0.0",
+  # https://pypi.org/project/pybasemkit/
+  # https://github.com/WolfgangFahl/pybasemkit
+  "pybasemkit>=0.1.3",
+  # https://pypi.org/project/ngwidgets/
+  "ngwidgets>=0.20.0",
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13"
+]
+dynamic = ["version"]
+
+[tool.hatch.version]
+path = "cam/__init__.py"
+
+[project.urls]
+Home = "https://github.com/WolfgangFahl/cam2web"
+Documentation = "https://wiki.bitplan.com/index.php/Cam2web"
+Source = "https://github.com/WolfgangFahl/cam2web"
+IssueTracker = "https://github.com/WolfgangFahl/cam2web/issues"
+
+[project.optional-dependencies]
+test = [
+  "green",
+]
+
+[tool.hatch.build.targets.wheel]
+only-include = ["cam"]
+
+[tool.hatch.build.targets.wheel.sources]
+"cam" = "cam"
