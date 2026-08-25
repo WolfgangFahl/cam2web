@@ -22,7 +22,7 @@ dependencies = [
   # https://github.com/WolfgangFahl/pybasemkit
   "pybasemkit>=0.1.3",
   # https://pypi.org/project/ngwidgets/
-  "ngwidgets>=0.20.0",
+  "ngwidgets>=0.30.7",
 ]
 requires-python = ">=3.10"
 classifiers = [

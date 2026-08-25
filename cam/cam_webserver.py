@@ -10,7 +10,7 @@ import os
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from ngwidgets.input_webserver import InputWebserver, InputWebSolution
 from ngwidgets.webserver import WebserverConfig
-from nicegui import app, background_tasks, run, ui
+from nicegui import app, ui
 from nicegui.client import Client
 
 from cam.os_camera import OsCamera
@@ -267,34 +267,29 @@ class Cam2WebSolution(InputWebSolution):
 
     def shoot(self):
         """
-        start a still capture in the background - the handler returns
-        at once so the event loop stays free, see
-        https://github.com/zauberzeug/nicegui/discussions/4053
-        """
-        with self.container:
-            self.shoot_button.disable()
-            self.status.set_text("shooting ...")
-            self.spinner.set_visibility(True)
-        background_tasks.create(self.do_shoot())
-
-    async def do_shoot(self):
-        """
         capture a still for this client and show it - the picture is
         this client's own, not a shared one
         """
-        try:
-            camera = self.webserver.get_camera()
-            data = await run.io_bound(camera.capture_still)
-            self.still_count += 1
-            name = str(self.client.id)
-            self.webserver.save_still(name, data)
-            with self.container:
-                self.image.set_source(f"/stills/{name}.jpg?ts={self.still_count}")
-                self.status.set_text("still")
-        except Exception as ex:
-            with self.container:
-                self.status.set_text(f"shooting failed: {ex}")
-        finally:
-            with self.container:
-                self.spinner.set_visibility(False)
-                self.shoot_button.enable()
+        camera = self.webserver.get_camera()
+        self.run_busy(
+            camera.capture_still,
+            status=self.status,
+            button=self.shoot_button,
+            spinner=self.spinner,
+            on_result=self.show_still,
+            busy_text="shooting ...",
+            done_text="still",
+            timeout=60.0,
+        )
+
+    def show_still(self, data: bytes):
+        """
+        show the given still for this client
+
+        Args:
+            data: the JPEG data of the still
+        """
+        self.still_count += 1
+        name = str(self.client.id)
+        self.webserver.save_still(name, data)
+        self.image.set_source(f"/stills/{name}.jpg?ts={self.still_count}")
