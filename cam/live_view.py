@@ -99,7 +99,7 @@ class LiveView:
         delay = self.delay()
         while self.running:
             try:
-                frame = self.camera.preview()
+                frame = self.grid.rotate(self.camera.preview())
                 self.grid.update_from_jpeg(frame)
                 self.frame = frame
             except Exception as ex:

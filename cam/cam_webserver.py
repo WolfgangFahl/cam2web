@@ -170,6 +170,17 @@ class Cam2WebServer(InputWebserver):
         fps = getattr(getattr(self, "args", None), "fps", 10.0)
         return fps
 
+    def rotation(self) -> int:
+        """
+        the configured clockwise display rotation
+
+        Returns:
+            the rotation in degrees - 0 for the EXIF based auto mode
+        """
+        rotate = getattr(getattr(self, "args", None), "rotate", "0")
+        rotation = 0 if rotate == "auto" else int(rotate)
+        return rotation
+
     def summary(self) -> PlainTextResponse:
         """
         the gphoto2 summary of the camera
@@ -236,7 +247,7 @@ class Cam2WebServer(InputWebserver):
             Response: the JPEG data of the still
         """
         camera = self.get_camera()
-        data = camera.capture_still()
+        data = self.get_live_view().grid.rotate(camera.capture_still())
         response = Response(content=data, media_type="image/jpeg")
         return response
 
@@ -248,7 +259,7 @@ class Cam2WebServer(InputWebserver):
             the shared LiveView of my camera
         """
         if self.live_view is None:
-            grid = Grid()
+            grid = Grid(rotation=self.rotation())
             self.live_view = LiveView(
                 grid=grid, camera=self.get_camera(), fps=self.fps()
             )
@@ -305,8 +316,10 @@ class Cam2WebServer(InputWebserver):
         """
         camera = self.get_camera()
         state = camera.state()
+        live_view = self.get_live_view()
+        state["rotation"] = live_view.grid.rotation
         state["fps"] = self.fps()
-        state["viewers"] = self.get_live_view().viewers
+        state["viewers"] = live_view.viewers
         response = JSONResponse(content=state)
         return response
 
@@ -334,14 +347,16 @@ class Cam2WebSolution(InputWebSolution):
         self.stop_button = ui.button("Stop", icon="stop", on_click=self.stop)
         self.check_button = ui.button("Check camera", icon="help")
         self.reset_button = ui.button("Reset USB", icon="usb", on_click=self.reset)
-        self.rotate_left_button = ui.button(icon="rotate_left")
-        self.rotate_right_button = ui.button(icon="rotate_right")
+        self.rotate_left_button = ui.button(
+            icon="rotate_left", on_click=lambda: self.rotate(-90)
+        )
+        self.rotate_right_button = ui.button(
+            icon="rotate_right", on_click=lambda: self.rotate(90)
+        )
         self.magnify_switch = ui.switch("Magnify")
         for todo in [
             self.stop_button,
             self.check_button,
-            self.rotate_left_button,
-            self.rotate_right_button,
             self.magnify_switch,
         ]:
             todo.disable()
@@ -386,6 +401,17 @@ class Cam2WebSolution(InputWebSolution):
         self.status.set_text("idle")
         self.stop_button.disable()
         self.live_button.enable()
+
+    def rotate(self, degrees: int):
+        """
+        turn the served picture by the given degrees
+
+        Args:
+            degrees: the clockwise turn to add - 90 or -90
+        """
+        grid = self.webserver.get_live_view().grid
+        grid.rotation = (grid.rotation + degrees) % 360
+        self.status.set_text(f"rotation {grid.rotation}")
 
     def reset(self):
         """

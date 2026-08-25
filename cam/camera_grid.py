@@ -68,6 +68,25 @@ class Grid:
         )
         return grid
 
+    def rotate(self, data: bytes) -> bytes:
+        """
+        turn the given JPEG by my rotation
+
+        Args:
+            data: the JPEG data to turn
+
+        Returns:
+            the turned JPEG data - the data itself when I am not rotated
+        """
+        turned = bytes(data)
+        if self.rotation:
+            image = Image.open(BytesIO(turned))
+            image = image.rotate(-self.rotation, expand=True)
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG")
+            turned = buffer.getvalue()
+        return turned
+
     def update_from_jpeg(self, data: bytes) -> None:
         """
         take size and picture from the given JPEG, keeping my specification
