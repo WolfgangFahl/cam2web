@@ -7,14 +7,25 @@ from typing import Optional
 
 import os
 
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 from ngwidgets.input_webserver import InputWebserver, InputWebSolution
 from ngwidgets.webserver import WebserverConfig
 from nicegui import app, ui
 from nicegui.client import Client
 
+from cam.live_view import BOUNDARY, LiveView
 from cam.os_camera import OsCamera
 from cam.version import Version
+
+BLANK_IMAGE = (
+    "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="
+)
 
 
 class Cam2WebServer(InputWebserver):
@@ -45,7 +56,7 @@ class Cam2WebServer(InputWebserver):
         """Constructs all the necessary attributes for the WebServer object."""
         InputWebserver.__init__(self, config=Cam2WebServer.get_config())
         self.camera: Optional[OsCamera] = None
-        self.viewers = 0
+        self.live_view: Optional[LiveView] = None
 
         @ui.page("/")
         async def home(client: Client):
@@ -96,6 +107,35 @@ class Cam2WebServer(InputWebserver):
             a still captured at full resolution
             """
             return self.still()
+
+        @app.get(
+            "/api/liveview.jpg",
+            response_class=Response,
+            responses={200: {"content": {"image/jpeg": {}}}},
+            summary="one live view frame",
+            description="a single frame of the live view as JPEG - the live "
+            "view is started when it is not running yet",
+        )
+        def liveview_jpg() -> Response:
+            """
+            one frame of the live view
+            """
+            return self.liveview_jpg()
+
+        @app.get(
+            "/api/liveview.mjpg",
+            response_class=StreamingResponse,
+            responses={200: {"content": {"multipart/x-mixed-replace": {}}}},
+            summary="continuous live view",
+            description="the live view as an MJPEG stream at the configured "
+            "frames per second - the camera's live view is released when the "
+            "last viewer left",
+        )
+        def liveview_mjpg() -> StreamingResponse:
+            """
+            the continuous live view
+            """
+            return self.liveview_mjpg()
 
     def get_camera(self) -> Optional[OsCamera]:
         """
@@ -198,6 +238,44 @@ class Cam2WebServer(InputWebserver):
         response = Response(content=data, media_type="image/jpeg")
         return response
 
+    def get_live_view(self) -> LiveView:
+        """
+        my live view, created on first use
+
+        Returns:
+            the shared LiveView of my camera
+        """
+        if self.live_view is None:
+            self.live_view = LiveView(camera=self.get_camera(), fps=self.fps())
+        return self.live_view
+
+    def liveview_jpg(self) -> Response:
+        """
+        one frame of the live view
+
+        Returns:
+            Response: the JPEG data of the frame or a 503
+        """
+        live_view = self.get_live_view()
+        frame = live_view.snapshot()
+        if frame is None:
+            response = Response(content="no live view frame", status_code=503)
+        else:
+            response = Response(content=frame, media_type="image/jpeg")
+        return response
+
+    def liveview_mjpg(self) -> StreamingResponse:
+        """
+        the live view as an MJPEG stream
+
+        Returns:
+            StreamingResponse: the multipart stream of live view frames
+        """
+        live_view = self.get_live_view()
+        media_type = f"multipart/x-mixed-replace; boundary={BOUNDARY}"
+        response = StreamingResponse(live_view.frames(), media_type=media_type)
+        return response
+
     def state(self) -> JSONResponse:
         """
         the camera and server state
@@ -208,7 +286,7 @@ class Cam2WebServer(InputWebserver):
         camera = self.get_camera()
         state = camera.state()
         state["fps"] = self.fps()
-        state["viewers"] = self.viewers
+        state["viewers"] = self.get_live_view().viewers
         response = JSONResponse(content=state)
         return response
 
@@ -224,22 +302,22 @@ class Cam2WebSolution(InputWebSolution):
         """
         super().__init__(webserver, client)
         self.still_count = 0
+        self.live_count = 0
 
     def setup_buttons(self):
         """
         the button bar of https://github.com/WolfgangFahl/cam2web/issues/8 -
-        only shoot is active yet, the others are placeholders
+        shoot, live view and stop are active yet, the others are placeholders
         """
         self.shoot_button = ui.button("Shoot", icon="camera", on_click=self.shoot)
-        self.live_button = ui.button("Live view", icon="videocam")
-        self.stop_button = ui.button("Stop", icon="stop")
+        self.live_button = ui.button("Live view", icon="videocam", on_click=self.live)
+        self.stop_button = ui.button("Stop", icon="stop", on_click=self.stop)
         self.check_button = ui.button("Check camera", icon="help")
         self.reset_button = ui.button("Reset USB", icon="usb")
         self.rotate_left_button = ui.button(icon="rotate_left")
         self.rotate_right_button = ui.button(icon="rotate_right")
         self.magnify_switch = ui.switch("Magnify")
         for todo in [
-            self.live_button,
             self.stop_button,
             self.check_button,
             self.reset_button,
@@ -265,11 +343,38 @@ class Cam2WebSolution(InputWebSolution):
 
         await self.setup_content_div(setup_home)
 
+    def live(self):
+        """
+        show the shared live view stream for this client
+        """
+        self.live_count += 1
+        self.image.set_source(f"/api/liveview.mjpg?ts={self.live_count}")
+        self.status.set_text("live view")
+        self.live_button.disable()
+        self.stop_button.enable()
+
+    def stop(self):
+        """
+        drop this client's live view - the camera's live view is released
+        when the last viewer left
+
+        the image is pointed at a blank picture and the shared live view is
+        stopped - a browser keeps the MJPEG connection open even when the
+        source is changed so the stream has to end on the server side
+        """
+        self.image.set_source(BLANK_IMAGE)
+        self.webserver.get_live_view().stop()
+        self.status.set_text("idle")
+        self.stop_button.disable()
+        self.live_button.enable()
+
     def shoot(self):
         """
         capture a still for this client and show it - the picture is
         this client's own, not a shared one
         """
+        if not self.live_button.enabled:
+            self.stop()
         camera = self.webserver.get_camera()
         self.run_busy(
             camera.capture_still,

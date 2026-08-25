@@ -94,6 +94,33 @@ class TestCam2WebServer(WebserverTest):
         self.assertEqual(expected.width, grid.width)
         self.assertEqual(expected.height, grid.height)
 
+    def test_liveview_routes(self):
+        """
+        test that the live view routes are registered - no device needed
+        """
+        paths = [route.path for route in self.ws.app.routes]
+        if self.debug:
+            print(paths)
+        self.assertIn("/api/liveview.jpg", paths)
+        self.assertIn("/api/liveview.mjpg", paths)
+
+    @unittest.skipIf(
+        Basetest.inPublicCI() or not os_camera().ready(),
+        "no physical camera device available",
+    )
+    def test_liveview_jpg(self):
+        """
+        test the /api/liveview.jpg endpoint
+        """
+        response = self.get_response("/api/liveview.jpg")
+        data = response.content
+        grid = Grid.from_jpeg(data)
+        if self.debug:
+            print(f"live view: {grid}")
+        self.assertEqual("image/jpeg", response.headers["content-type"])
+        self.assertTrue(grid.width > 0)
+        self.ws.get_live_view().stop()
+
     @unittest.skipIf(
         Basetest.inPublicCI() or not os_camera().ready(),
         "no physical camera device available",

@@ -20,6 +20,7 @@ class Camera:
     """
     error: Optional[Exception] = None
     device: Optional[Any] = None
+    config: Optional[Any] = None
     opened: bool = False
 
     _instance: ClassVar[Optional["Camera"]] = None
@@ -112,8 +113,13 @@ class Camera:
             key: the name of the configuration widget
             value: the value to set
             do_set: when True push the configuration to the device
+
+        Raises:
+            ValueError: if the camera could not be opened
         """
         self.open()
+        if self.config is None:
+            raise ValueError(f"camera is not open: {self.error}")
         self.config.get_child_by_name(key).set_value(value)
         if do_set:
             self.device.set_config(self.config)
@@ -128,10 +134,41 @@ class Camera:
     def magnify(self, level: int) -> Grid:
         """
         switch on live view at the given zoom level and return its grid
+
+        Args:
+            level: the zoom level - 1 is the full view
+
+        Returns:
+            the Grid of the captured preview frame
+        """
+        self.start_liveview(level)
+        data = self.preview()
+        grid = Grid.from_jpeg(data)
+        return grid
+
+    def start_liveview(self, level: int = 1) -> None:
+        """
+        switch my device to live view at the given zoom level
+
+        Args:
+            level: the zoom level - 1 is the full view
         """
         self.set_config("viewfinder", 1)
         self.set_config("eoszoom", str(level), do_set=True)
+
+    def stop_liveview(self) -> None:
+        """
+        switch my device's live view off
+        """
+        self.set_config("viewfinder", 0, do_set=True)
+
+    def preview(self) -> bytes:
+        """
+        one live view frame - live view has to be started first
+
+        Returns:
+            the JPEG data of the frame
+        """
         file = self.device.capture_preview()
-        data = file.get_data_and_size()
-        grid = Grid.from_jpeg(data)
-        return grid
+        data = bytes(file.get_data_and_size())
+        return data
