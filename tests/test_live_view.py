@@ -11,8 +11,10 @@ import unittest
 
 from ngwidgets.basetest import Basetest
 
+from cam.camera import Camera
 from cam.camera_grid import Grid
 from cam.live_view import LiveView
+from cam.os_camera import OsCamera
 from tests.test_oscamera import os_camera
 
 
@@ -101,3 +103,44 @@ class TestLiveView(Basetest):
         self.assertTrue(chunk.startswith(b"--frame\r\n"))
         self.assertEqual(0, self.live_view.viewers)
         self.assertFalse(self.live_view.running)
+
+
+class TestLiveViewTuning(Basetest):
+    """
+    test the zoom tuning of a live view without a device
+    """
+
+    def setUp(self, debug=True, profile=True):
+        Basetest.setUp(self, debug=debug, profile=profile)
+        self.grid = Grid()
+        self.live_view = LiveView(grid=self.grid, camera=Camera(), fps=5.0)
+
+    def test_tune(self):
+        """
+        test that tuning writes zoom, x and y into the grid
+        """
+        self.live_view.tune(5, 0.25, 0.75)
+        if self.debug:
+            print(self.grid)
+        self.assertEqual(5, self.grid.zoom)
+        self.assertEqual(0.25, self.grid.x)
+        self.assertEqual(0.75, self.grid.y)
+
+    def test_zoom_position(self):
+        """
+        test the sensor pixel position of a magnified area
+        """
+        camera = OsCamera()
+        camera.grid = Grid(width=4000, height=2000)
+        cases = {
+            (1, 0.5, 0.5): None,  # the full view has no position
+            (5, 0.5, 0.5): "1600,800",
+            (5, 0.0, 0.0): "0,0",
+            (5, 1.0, 1.0): "3200,1600",
+        }
+        for (zoom, x, y), expected in cases.items():
+            grid = Grid(zoom=zoom, x=x, y=y)
+            position = camera.zoom_position(grid)
+            if self.debug:
+                print(f"{grid}: {position}")
+            self.assertEqual(expected, position)

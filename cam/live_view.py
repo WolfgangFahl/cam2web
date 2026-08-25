@@ -27,6 +27,10 @@ class LiveView:
     are fed from the latest frame of my own capture loop
     """
 
+    # frames the device is given to follow a zoom or position change -
+    # measured on an EOS 1000D where a change needs some 0.6 s
+    SETTLE_FRAMES = 6
+
     def __init__(self, grid: Grid, camera: Camera, fps: float = 10.0):
         """
         construct me for the given grid and camera
@@ -44,7 +48,11 @@ class LiveView:
         self.running = False
         self.error: Optional[Exception] = None
         self.lock = threading.RLock()
+        self.frame_event = threading.Event()
         self.thread: Optional[threading.Thread] = None
+        self.applied_zoom: Optional[int] = None
+        self.applied_position: Optional[str] = None
+        self.settling = 0
 
     def start(self) -> None:
         """
@@ -55,7 +63,11 @@ class LiveView:
             if not self.running:
                 self.error = None
                 try:
-                    self.camera.start_liveview(self.grid.zoom)
+                    # the device refuses a zoom at live view start, so the
+                    # full view is started and the zoom follows in the loop
+                    self.camera.start_liveview()
+                    self.applied_zoom = 1
+                    self.applied_position = None
                     self.running = True
                     self.thread = threading.Thread(
                         target=self.capture_loop, daemon=True
@@ -63,6 +75,64 @@ class LiveView:
                     self.thread.start()
                 except Exception as ex:
                     self.error = ex
+
+    def position(self) -> Optional[str]:
+        """
+        the device position of my grid's magnified area
+
+        Returns:
+            the eoszoomposition or None when the camera can not tell
+        """
+        position = None
+        if hasattr(self.camera, "zoom_position"):
+            position = self.camera.zoom_position(self.grid)
+        return position
+
+    def apply_step(self) -> bool:
+        """
+        hand one pending change to the device
+
+        zoom and position each need their own frames to be taken before the
+        next change is accepted, so at most one step is done per round and
+        only by my capture loop - gphoto2 serves one caller
+
+        Returns:
+            True while the device is following a change and its frames are
+            not the ones the grid asks for
+        """
+        position = self.position()
+        if self.settling > 0:
+            self.settling -= 1
+        elif self.grid.zoom != self.applied_zoom:
+            self.camera.set_zoom_level(self.grid.zoom)
+            self.applied_zoom = self.grid.zoom
+            self.settling = self.SETTLE_FRAMES
+        elif position is not None and position != self.applied_position:
+            self.camera.set_zoom_position(position)
+            self.applied_position = position
+            self.settling = self.SETTLE_FRAMES
+        is_settling = self.settling > 0
+        return is_settling
+
+    def tune(self, zoom: int, x: float, y: float) -> None:
+        """
+        serve the magnified area given by zoom, x and y
+
+        Args:
+            zoom: the zoom level - 1 is the full view
+            x: the horizontal centre of the magnified area
+            y: the vertical centre of the magnified area
+        """
+        with self.lock:
+            changed = (zoom, x, y) != (self.grid.zoom, self.grid.x, self.grid.y)
+            self.grid.zoom = zoom
+            self.grid.x = x
+            self.grid.y = y
+            if changed:
+                # the capture loop owns the device and applies the change,
+                # the frames until then are the ones of the old area
+                self.frame = None
+                self.frame_event.clear()
 
     def stop(self) -> None:
         """
@@ -81,13 +151,15 @@ class LiveView:
             except Exception as ex:
                 self.error = ex
         self.frame = None
+        # wake the waiters so they see that I am not running any more
+        self.frame_event.set()
 
     def delay(self) -> float:
         """
         the seconds between two captured frames
 
         Returns:
-            the frame delay in seconds
+            the frame delay in seconds 1.0 / self.fps if fps is set otherwise 0.1
         """
         delay = 1.0 / self.fps if self.fps > 0 else 0.1
         return delay
@@ -95,17 +167,39 @@ class LiveView:
     def capture_loop(self) -> None:
         """
         capture preview frames until I am stopped or the camera fails
+
+        the sleep is the frame rate limit itself - every other wait in me
+        is done on the frame event
         """
         delay = self.delay()
         while self.running:
             try:
-                frame = self.grid.rotate(self.camera.preview())
-                self.grid.update_from_jpeg(frame)
-                self.frame = frame
+                frame = self.camera.preview()
+                if not self.apply_step():
+                    frame = self.grid.rotate(frame)
+                    self.grid.update_from_jpeg(frame)
+                    self.frame = frame
+                    self.frame_event.set()
             except Exception as ex:
                 self.error = ex
                 self.running = False
+                self.frame_event.set()
             time.sleep(delay)
+
+    def next_frame(self, timeout: float) -> Optional[bytes]:
+        """
+        the next frame published by my capture loop
+
+        Args:
+            timeout: the seconds to wait for it
+
+        Returns:
+            the JPEG data of the frame or None when none arrived in time
+        """
+        self.frame_event.wait(timeout)
+        self.frame_event.clear()
+        frame = self.frame
+        return frame
 
     def latest(self, timeout: float = 5.0) -> Optional[bytes]:
         """
@@ -118,10 +212,7 @@ class LiveView:
             the JPEG data of the latest frame or None when none arrived
         """
         self.start()
-        deadline = time.time() + timeout
-        while self.frame is None and self.running and time.time() < deadline:
-            time.sleep(self.delay())
-        frame = self.frame
+        frame = self.frame if self.frame else self.next_frame(timeout)
         return frame
 
     def snapshot(self, timeout: float = 5.0) -> Optional[bytes]:
@@ -150,11 +241,7 @@ class LiveView:
         Returns:
             the JPEG data of the latest frame or None when none arrived
         """
-        await asyncio.to_thread(self.start)
-        deadline = time.time() + timeout
-        while self.frame is None and self.running and time.time() < deadline:
-            await asyncio.sleep(self.delay())
-        frame = self.frame
+        frame = await asyncio.to_thread(self.latest, timeout)
         return frame
 
     def part(self, frame: bytes) -> bytes:
@@ -175,12 +262,16 @@ class LiveView:
         chunk = header.encode() + frame + b"\r\n"
         return chunk
 
-    async def frames(self) -> AsyncGenerator[bytes, None]:
+    async def frames(self, timeout: float = 5.0) -> AsyncGenerator[bytes, None]:
         """
-        the MJPEG chunks for one viewer - I stop when the last viewer left
+        the MJPEG chunks for one viewer - one chunk per captured frame so
+        that no picture is sent twice; I stop when the last viewer left
 
         the generator is asynchronous so that a disconnecting client
         cancels it and my viewer accounting stays correct
+
+        Args:
+            timeout: the seconds to wait for each frame
 
         Yields:
             the multipart chunks of the stream
@@ -188,11 +279,10 @@ class LiveView:
         with self.lock:
             self.viewers += 1
         try:
-            frame = await self.first_frame()
+            frame = await self.first_frame(timeout)
             while frame is not None and self.running:
                 yield self.part(frame)
-                await asyncio.sleep(self.delay())
-                frame = self.frame
+                frame = await asyncio.to_thread(self.next_frame, timeout)
         finally:
             with self.lock:
                 self.viewers -= 1

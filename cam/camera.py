@@ -146,15 +146,39 @@ class Camera:
         grid = Grid.from_jpeg(data, zoom=level)
         return grid
 
-    def start_liveview(self, level: int = 1) -> None:
+    def start_liveview(self, level: int = 1, position: Optional[str] = None) -> None:
         """
         switch my device to live view at the given zoom level
 
         Args:
             level: the zoom level - 1 is the full view
+            position: the eoszoomposition as "x,y" in sensor pixels
         """
         self.set_config("viewfinder", 1)
+        self.set_zoom_level(level)
+        if position is not None:
+            self.set_zoom_position(position)
+
+    def set_zoom_level(self, level: int) -> None:
+        """
+        set the zoom level of a running live view
+
+        the device needs a moment and a frame to follow, so zoom and
+        position are set one after the other and not per mouse move
+
+        Args:
+            level: the zoom level - 1 is the full view
+        """
         self.set_config("eoszoom", str(level), do_set=True)
+
+    def set_zoom_position(self, position: str) -> None:
+        """
+        set the magnified area of a running live view
+
+        Args:
+            position: the eoszoomposition as "x,y" in sensor pixels
+        """
+        self.set_config("eoszoomposition", position, do_set=True)
 
     def stop_liveview(self) -> None:
         """

@@ -70,6 +70,30 @@ class OsCamera(Camera):
         state["rotation"] = rotation
         return state
 
+    def zoom_position(self, grid: Grid) -> Optional[str]:
+        """
+        the eoszoomposition for the magnified area of the given grid
+
+        the grid's x and y are the centre of the area in 0..1 of the sensor
+        while the device wants the top left corner in sensor pixels
+
+        Args:
+            grid: the grid specifying zoom, x and y
+
+        Returns:
+            the position as "x,y" or None when my sensor size is unknown
+        """
+        position = None
+        if self.grid and grid.zoom > 1:
+            box_width = self.grid.width // grid.zoom
+            box_height = self.grid.height // grid.zoom
+            left = int(grid.x * self.grid.width) - box_width // 2
+            top = int(grid.y * self.grid.height) - box_height // 2
+            left = max(0, min(left, self.grid.width - box_width))
+            top = max(0, min(top, self.grid.height - box_height))
+            position = f"{left},{top}"
+        return position
+
     def reference_path(self) -> str:
         """
         the path of my reference picture, keyed by my serial number

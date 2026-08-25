@@ -37,6 +37,9 @@ class Cam2WebServer(InputWebserver):
     webcam emulator server - serves an MJPEG stream and stills
     """
 
+    # zoom levels measured as working on the EOS 1000D
+    ZOOM_LEVELS = [1, 5]
+
     @classmethod
     def get_config(cls) -> WebserverConfig:
         """
@@ -116,13 +119,15 @@ class Cam2WebServer(InputWebserver):
             responses={200: {"content": {"image/jpeg": {}}}},
             summary="one live view frame",
             description="a single frame of the live view as JPEG - the live "
-            "view is started when it is not running yet",
+            "view is started when it is not running yet; zoom 1 is the full "
+            "view, higher values magnify around the centre x, y given in "
+            "0..1 of the sensor",
         )
-        def liveview_jpg() -> Response:
+        def liveview_jpg(zoom: int = 1, x: float = 0.5, y: float = 0.5) -> Response:
             """
             one frame of the live view
             """
-            return self.liveview_jpg()
+            return self.liveview_jpg(zoom, x, y)
 
         @app.get(
             "/api/liveview.mjpg",
@@ -131,13 +136,16 @@ class Cam2WebServer(InputWebserver):
             summary="continuous live view",
             description="the live view as an MJPEG stream at the configured "
             "frames per second - the camera's live view is released when the "
-            "last viewer left",
+            "last viewer left; zoom, x and y select the magnified area as for "
+            "liveview.jpg and retune the shared live view",
         )
-        def liveview_mjpg() -> StreamingResponse:
+        def liveview_mjpg(
+            zoom: int = 1, x: float = 0.5, y: float = 0.5
+        ) -> StreamingResponse:
             """
             the continuous live view
             """
-            return self.liveview_mjpg()
+            return self.liveview_mjpg(zoom, x, y)
 
     def get_camera(self) -> Optional[OsCamera]:
         """
@@ -280,14 +288,20 @@ class Cam2WebServer(InputWebserver):
         state = camera.state()
         return state
 
-    def liveview_jpg(self) -> Response:
+    def liveview_jpg(self, zoom: int = 1, x: float = 0.5, y: float = 0.5) -> Response:
         """
         one frame of the live view
+
+        Args:
+            zoom: the zoom level - 1 is the full view
+            x: the horizontal centre of the magnified area
+            y: the vertical centre of the magnified area
 
         Returns:
             Response: the JPEG data of the frame or a 503
         """
         live_view = self.get_live_view()
+        live_view.tune(zoom, x, y)
         frame = live_view.snapshot()
         if frame is None:
             response = Response(content="no live view frame", status_code=503)
@@ -295,14 +309,22 @@ class Cam2WebServer(InputWebserver):
             response = Response(content=frame, media_type="image/jpeg")
         return response
 
-    def liveview_mjpg(self) -> StreamingResponse:
+    def liveview_mjpg(
+        self, zoom: int = 1, x: float = 0.5, y: float = 0.5
+    ) -> StreamingResponse:
         """
         the live view as an MJPEG stream
+
+        Args:
+            zoom: the zoom level - 1 is the full view
+            x: the horizontal centre of the magnified area
+            y: the vertical centre of the magnified area
 
         Returns:
             StreamingResponse: the multipart stream of live view frames
         """
         live_view = self.get_live_view()
+        live_view.tune(zoom, x, y)
         media_type = f"multipart/x-mixed-replace; boundary={BOUNDARY}"
         response = StreamingResponse(live_view.frames(), media_type=media_type)
         return response
@@ -317,7 +339,12 @@ class Cam2WebServer(InputWebserver):
         camera = self.get_camera()
         state = camera.state()
         live_view = self.get_live_view()
-        state["rotation"] = live_view.grid.rotation
+        grid = live_view.grid
+        state["rotation"] = grid.rotation
+        state["zoom"] = grid.zoom
+        state["zoom_levels"] = self.ZOOM_LEVELS
+        state["x"] = grid.x
+        state["y"] = grid.y
         state["fps"] = self.fps()
         state["viewers"] = live_view.viewers
         response = JSONResponse(content=state)

@@ -35,6 +35,7 @@ class TestCam2WebServer(WebserverTest):
             debug=debug,
             profile=profile,
         )
+        pass
 
     def tearDown(self):
         """
@@ -49,12 +50,13 @@ class TestCam2WebServer(WebserverTest):
         """
         test the shooting panel page
         """
+        # we wait 1 sec more than the official timeout
+        deadline = time.time() + self.ws.config.timeout + 1.0
         # the nicegui page needs the event loop of the server thread
-        deadline = time.time() + 5.0
         while core.loop is None and time.time() < deadline:
             time.sleep(0.1)
         html = self.get_html("/")
-        self.assertTrue(len(html) > 0)
+        self.assertTrue("<title>cam2web" in html)
 
     def test_state_json(self):
         """

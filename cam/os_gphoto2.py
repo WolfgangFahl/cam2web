@@ -80,7 +80,8 @@ class OsGPhoto2:
             r = self.shell.run(f"pgrep -x {daemon}", debug=False)
             if r.returncode != 0:
                 return
-            time.sleep(0.05)
+            # 20 checks per sec
+            time.sleep(1/20.0)
             
 
 
