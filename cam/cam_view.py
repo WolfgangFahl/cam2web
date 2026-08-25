@@ -92,6 +92,7 @@ class CamView:
                 ).style("width:256px")
                 self.navigator.set_visibility(False)
             self.meta_label = ui.label("").classes("font-mono text-xs")
+            self.meta_label.set_visibility(self.webserver.debug)
 
     def setup_buttons(self):
         """
@@ -189,7 +190,8 @@ class CamView:
             meta: the metadata as delivered by the zoom call
         """
         text = " ".join(f"{key}={value}" for key, value in meta.items())
-        self.meta_label.set_text(text)
+        if self.webserver.debug:
+            self.meta_label.set_text(text)
         logging.getLogger("cam2web").info(text)
 
     def box(self) -> Tuple[float, float]:
