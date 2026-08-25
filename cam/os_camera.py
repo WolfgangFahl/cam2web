@@ -78,6 +78,21 @@ class OsCamera(Camera):
         path = os.path.join(self.base_path, f"{serial}.jpg")
         return path
 
+    def capture_still(self) -> bytes:
+        """
+        capture a still on the camera and fetch its JPEG data
+
+        Returns:
+            the JPEG data of the captured still
+        """
+        Camera.open(self)
+        camera_path = self.device.capture(gp.GP_CAPTURE_IMAGE)
+        camera_file = self.device.file_get(
+            camera_path.folder, camera_path.name, gp.GP_FILE_TYPE_NORMAL
+        )
+        data = bytes(camera_file.get_data_and_size())
+        return data
+
     def capture_reference(self, path: str) -> None:
         """
         capture my reference picture to the given path
@@ -85,12 +100,10 @@ class OsCamera(Camera):
         Args:
             path: the path to save my reference picture to
         """
+        data = self.capture_still()
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        camera_path = self.device.capture(gp.GP_CAPTURE_IMAGE)
-        camera_file = self.device.file_get(
-            camera_path.folder, camera_path.name, gp.GP_FILE_TYPE_NORMAL
-        )
-        camera_file.save(path)
+        with open(path, "wb") as jpeg_file:
+            jpeg_file.write(data)
 
     def reference_grid(self) -> Grid:
         """

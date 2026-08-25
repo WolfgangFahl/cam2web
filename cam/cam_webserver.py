@@ -5,7 +5,7 @@ Created on 24.08.2026
 '''
 from typing import Optional
 
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from ngwidgets.input_webserver import InputWebserver, InputWebSolution
 from ngwidgets.webserver import WebserverConfig
 from nicegui import app
@@ -53,6 +53,10 @@ class Cam2WebServer(InputWebserver):
         def summary():
             return self.summary()
 
+        @app.get("/api/still.jpg")
+        def still():
+            return self.still()
+
     def get_camera(self) -> Optional[OsCamera]:
         """
         my camera, created from the attached device on first use
@@ -93,6 +97,18 @@ class Cam2WebServer(InputWebserver):
         """
         camera = self.get_camera()
         response = PlainTextResponse(content=camera.summary())
+        return response
+
+    def still(self) -> Response:
+        """
+        a still captured at full resolution
+
+        Returns:
+            Response: the JPEG data of the still
+        """
+        camera = self.get_camera()
+        data = camera.capture_still()
+        response = Response(content=data, media_type="image/jpeg")
         return response
 
     def state(self) -> JSONResponse:

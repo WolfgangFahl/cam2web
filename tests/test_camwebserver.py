@@ -14,6 +14,7 @@ from ngwidgets.webserver_test import WebserverTest
 
 from cam.cam2web_cmd import Cam2WebCmd
 from cam.cam_webserver import Cam2WebServer
+from cam.camera_grid import Grid
 from tests.test_oscamera import os_camera
 
 
@@ -62,6 +63,23 @@ class TestCam2WebServer(WebserverTest):
             self.assertIn(key, state)
         self.assertIn("width", state["size"])
         self.assertIn("height", state["size"])
+
+    @unittest.skipIf(
+        Basetest.inPublicCI() or not os_camera().ready(),
+        "no physical camera device available",
+    )
+    def test_still_jpg(self):
+        """
+        test the /api/still.jpg endpoint against the reference picture
+        """
+        response = self.get_response("/api/still.jpg")
+        data = response.content
+        grid = Grid.from_jpeg(data)
+        expected = os_camera().reference_grid()
+        if self.debug:
+            print(f"still: {grid} reference: {expected}")
+        self.assertEqual(expected.width, grid.width)
+        self.assertEqual(expected.height, grid.height)
 
     @unittest.skipIf(
         Basetest.inPublicCI() or not os_camera().ready(),
