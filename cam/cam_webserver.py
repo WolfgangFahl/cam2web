@@ -20,6 +20,7 @@ from nicegui import app, ui
 from nicegui.client import Client
 
 from cam.cam_view import CamView
+from cam.camera_grid import Grid
 from cam.live_view import BOUNDARY, LiveView
 from cam.os_camera import OsCamera
 from cam.os_gphoto2 import OsGPhoto2
