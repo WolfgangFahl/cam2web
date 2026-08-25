@@ -7,10 +7,12 @@ test the cam2web webserver REST interface
 """
 
 import json
+import time
 import unittest
 
 from ngwidgets.basetest import Basetest
 from ngwidgets.webserver_test import WebserverTest
+from nicegui import core
 
 from cam.cam2web_cmd import Cam2WebCmd
 from cam.cam_webserver import Cam2WebServer
@@ -42,6 +44,17 @@ class TestCam2WebServer(WebserverTest):
         if camera:
             camera.close()
         WebserverTest.tearDown(self)
+
+    def test_home(self):
+        """
+        test the shooting panel page
+        """
+        # the nicegui page needs the event loop of the server thread
+        deadline = time.time() + 5.0
+        while core.loop is None and time.time() < deadline:
+            time.sleep(0.1)
+        html = self.get_html("/")
+        self.assertTrue(len(html) > 0)
 
     def test_state_json(self):
         """

@@ -5,10 +5,12 @@ Created on 24.08.2026
 '''
 from typing import Optional
 
-from fastapi.responses import JSONResponse, PlainTextResponse, Response
+import os
+
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from ngwidgets.input_webserver import InputWebserver, InputWebSolution
 from ngwidgets.webserver import WebserverConfig
-from nicegui import app
+from nicegui import app, run, ui
 from nicegui.client import Client
 
 from cam.os_camera import OsCamera
@@ -44,6 +46,14 @@ class Cam2WebServer(InputWebserver):
         InputWebserver.__init__(self, config=Cam2WebServer.get_config())
         self.camera: Optional[OsCamera] = None
         self.viewers = 0
+
+        @ui.page("/")
+        async def home(client: Client):
+            return await self.page(client, Cam2WebSolution.home)
+
+        @app.get("/stills/{name:path}")
+        def stills(name: str):
+            return self.stills(name)
 
         @app.get(
             "/api/state.json",
@@ -129,6 +139,53 @@ class Cam2WebServer(InputWebserver):
         response = PlainTextResponse(content=camera.summary())
         return response
 
+    def still_path(self, name: str) -> str:
+        """
+        the path of the still with the given name
+
+        Args:
+            name: the name of the still
+
+        Returns:
+            the path of the still
+        """
+        path = os.path.join(self.config.base_path, "stills", f"{name}.jpg")
+        return path
+
+    def save_still(self, name: str, data: bytes) -> str:
+        """
+        save the given still data under the given name
+
+        Args:
+            name: the name of the still
+            data: the JPEG data of the still
+
+        Returns:
+            the path the still was saved to
+        """
+        path = self.still_path(name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as jpeg_file:
+            jpeg_file.write(data)
+        return path
+
+    def stills(self, name: str) -> Response:
+        """
+        serve the still with the given name
+
+        Args:
+            name: the name of the still
+
+        Returns:
+            Response: the JPEG file or a 404
+        """
+        path = self.still_path(name.removesuffix(".jpg"))
+        if os.path.isfile(path):
+            response = FileResponse(path, media_type="image/jpeg")
+        else:
+            response = Response(content="no such still", status_code=404)
+        return response
+
     def still(self) -> Response:
         """
         a still captured at full resolution
@@ -166,3 +223,60 @@ class Cam2WebSolution(InputWebSolution):
         Initialize the solution
         """
         super().__init__(webserver, client)
+        self.still_count = 0
+
+    def setup_buttons(self):
+        """
+        the button bar of https://github.com/WolfgangFahl/cam2web/issues/8 -
+        only shoot is active yet, the others are placeholders
+        """
+        self.shoot_button = ui.button("Shoot", icon="camera", on_click=self.shoot)
+        self.live_button = ui.button("Live view", icon="videocam")
+        self.stop_button = ui.button("Stop", icon="stop")
+        self.check_button = ui.button("Check camera", icon="help")
+        self.reset_button = ui.button("Reset USB", icon="usb")
+        self.rotate_left_button = ui.button(icon="rotate_left")
+        self.rotate_right_button = ui.button(icon="rotate_right")
+        self.magnify_switch = ui.switch("Magnify")
+        for todo in [
+            self.live_button,
+            self.stop_button,
+            self.check_button,
+            self.reset_button,
+            self.rotate_left_button,
+            self.rotate_right_button,
+            self.magnify_switch,
+        ]:
+            todo.disable()
+
+    async def home(self):
+        """
+        the shooting panel - the button bar with the picture below
+        """
+
+        def setup_home():
+            with ui.column().classes("w-full gap-3") as self.container:
+                with ui.row().classes("items-center gap-2"):
+                    self.setup_buttons()
+                    self.status = ui.label("idle")
+                self.image = ui.image("").style("max-width:70%;min-height:512px")
+
+        await self.setup_content_div(setup_home)
+
+    async def shoot(self):
+        """
+        capture a still for this client and show it - the picture is
+        this client's own, not a shared one
+        """
+        self.still_count += 1
+        with self.container:
+            self.shoot_button.disable()
+            self.status.set_text("shooting ...")
+        camera = self.webserver.get_camera()
+        data = await run.io_bound(camera.capture_still)
+        name = str(self.client.id)
+        self.webserver.save_still(name, data)
+        with self.container:
+            self.image.set_source(f"/stills/{name}.jpg?ts={self.still_count}")
+            self.status.set_text("still")
+            self.shoot_button.enable()
