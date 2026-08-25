@@ -45,16 +45,46 @@ class Cam2WebServer(InputWebserver):
         self.camera: Optional[OsCamera] = None
         self.viewers = 0
 
-        @app.get("/api/state.json")
-        def state():
+        @app.get(
+            "/api/state.json",
+            response_class=JSONResponse,
+            summary="camera and server state",
+            description="whether a camera is present and open, its size and "
+            "rotation, the configured frames per second and the number of "
+            "viewers",
+        )
+        def state() -> JSONResponse:
+            """
+            the camera and server state
+            """
             return self.state()
 
-        @app.get("/api/summary.txt")
-        def summary():
+        @app.get(
+            "/api/summary.txt",
+            response_class=PlainTextResponse,
+            summary="gphoto2 device summary",
+            description="the raw gphoto2 summary of the attached camera as "
+            "plain text - locale dependent and some 4 KB, a diagnostic path "
+            "and not one to poll",
+        )
+        def summary() -> PlainTextResponse:
+            """
+            the gphoto2 device summary
+            """
             return self.summary()
 
-        @app.get("/api/still.jpg")
-        def still():
+        @app.get(
+            "/api/still.jpg",
+            response_class=Response,
+            responses={200: {"content": {"image/jpeg": {}}}},
+            summary="capture a still",
+            description="release the shutter and serve the captured picture at "
+            "full resolution as JPEG",
+        )
+        def still() -> Response:
+            """
+            a still captured at full resolution
+            """
             return self.still()
 
     def get_camera(self) -> Optional[OsCamera]:
