@@ -34,8 +34,8 @@ class Cam2WebCmd(WebserverCmd):
         parser.add_argument(
             "--fps",
             type=float,
-            default=10.0,
-            help="maximum frames per second for the MJPEG stream [default: %(default)s]",
+            default=20.0,
+            help="maximum frames per second for the MJPEG stream - an EOS 1000D delivers some 20 [default: %(default)s]",
         )
         return parser
 

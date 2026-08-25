@@ -12,7 +12,7 @@ https://github.com/WolfgangFahl/scan2wiki/issues/41
 
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Optional
+from typing import Optional, Tuple
 
 from PIL import Image
 
@@ -86,6 +86,90 @@ class Grid:
             image.save(buffer, format="JPEG")
             turned = buffer.getvalue()
         return turned
+
+    def to_sensor(self, display_x: float, display_y: float) -> Tuple[float, float]:
+        """
+        the sensor fractions for the given display fractions
+
+        the served picture is turned clockwise by my rotation, so a point
+        the user points at has to be turned back to address the sensor
+
+        Args:
+            display_x: the horizontal fraction as seen by the user
+            display_y: the vertical fraction as seen by the user
+
+        Returns:
+            the x and y fraction on the sensor
+        """
+        if self.rotation == 90:
+            sensor = (display_y, 1.0 - display_x)
+        elif self.rotation == 180:
+            sensor = (1.0 - display_x, 1.0 - display_y)
+        elif self.rotation == 270:
+            sensor = (1.0 - display_y, display_x)
+        else:
+            sensor = (display_x, display_y)
+        return sensor
+
+    def to_display(self, sensor_x: float, sensor_y: float) -> Tuple[float, float]:
+        """
+        the display fractions for the given sensor fractions
+
+        Args:
+            sensor_x: the horizontal fraction on the sensor
+            sensor_y: the vertical fraction on the sensor
+
+        Returns:
+            the x and y fraction as seen by the user
+        """
+        if self.rotation == 90:
+            display = (1.0 - sensor_y, sensor_x)
+        elif self.rotation == 180:
+            display = (1.0 - sensor_x, 1.0 - sensor_y)
+        elif self.rotation == 270:
+            display = (sensor_y, 1.0 - sensor_x)
+        else:
+            display = (sensor_x, sensor_y)
+        return display
+
+    def to_display_box(self, box_x: float, box_y: float) -> Tuple[float, float]:
+        """
+        the display size of a sensor sized box - width and height swap
+        on a quarter turn
+
+        Args:
+            box_x: the box width as a fraction of the sensor width
+            box_y: the box height as a fraction of the sensor height
+
+        Returns:
+            the box width and height as display fractions
+        """
+        box = (box_y, box_x) if self.rotation in (90, 270) else (box_x, box_y)
+        return box
+
+    def crop(self, data: bytes, factor: int) -> bytes:
+        """
+        the centred crop of the given JPEG magnifying it by the given factor
+
+        Args:
+            data: the JPEG data to crop
+            factor: the digital magnification - 1 leaves the data alone
+
+        Returns:
+            the cropped JPEG data
+        """
+        cropped = bytes(data)
+        if factor > 1:
+            image = Image.open(BytesIO(cropped))
+            width = image.width // factor
+            height = image.height // factor
+            left = (image.width - width) // 2
+            top = (image.height - height) // 2
+            image = image.crop((left, top, left + width, top + height))
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG")
+            cropped = buffer.getvalue()
+        return cropped
 
     def update_from_jpeg(self, data: bytes) -> None:
         """

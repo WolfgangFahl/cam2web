@@ -27,9 +27,14 @@ class LiveView:
     are fed from the latest frame of my own capture loop
     """
 
-    # frames the device is given to follow a zoom or position change -
-    # measured on an EOS 1000D where a change needs some 0.6 s
-    SETTLE_FRAMES = 6
+    # frames the device is given to follow a change - measured on an
+    # EOS 1000D: the zoom is in the next frame, a position needs two
+    SETTLE_ZOOM_FRAMES = 1
+    SETTLE_POSITION_FRAMES = 2
+
+    # zoom levels the device itself serves - higher levels are reached by
+    # cropping the highest device level digitally
+    DEVICE_ZOOM_LEVELS = [1, 5]
 
     def __init__(self, grid: Grid, camera: Camera, fps: float = 10.0):
         """
@@ -53,6 +58,53 @@ class LiveView:
         self.applied_zoom: Optional[int] = None
         self.applied_position: Optional[str] = None
         self.settling = 0
+        self.measured_fps = 0.0
+        self.last_taken: Optional[float] = None
+
+    def measure(self, taken: float) -> None:
+        """
+        keep the frame rate the device really delivers
+
+        Args:
+            taken: the time the frame capture was started at
+        """
+        if self.last_taken is not None:
+            elapsed = taken - self.last_taken
+            if elapsed > 0:
+                rate = 1.0 / elapsed
+                # a running mean over some ten frames
+                self.measured_fps = (
+                    rate
+                    if self.measured_fps == 0
+                    else 0.9 * self.measured_fps + 0.1 * rate
+                )
+        self.last_taken = taken
+
+    def metadata(self) -> dict:
+        """
+        what I am doing right now - shown while the live view is used
+        instead of being measured in a script
+
+        Returns:
+            the live view metadata as a dict
+        """
+        grid = self.grid
+        meta = {
+            "zoom": grid.zoom,
+            "device_zoom": self.device_zoom(),
+            "digital_zoom": self.digital_zoom(),
+            "rotation": grid.rotation,
+            "sensor_x": round(grid.x, 4),
+            "sensor_y": round(grid.y, 4),
+            "position": self.applied_position,
+            "frame": f"{grid.width}x{grid.height}",
+            "fps": round(self.measured_fps, 1),
+            "fps_limit": self.fps,
+            "viewers": self.viewers,
+            "settling": self.settling,
+            "error": str(self.error) if self.error else None,
+        }
+        return meta
 
     def start(self) -> None:
         """
@@ -85,8 +137,32 @@ class LiveView:
         """
         position = None
         if hasattr(self.camera, "zoom_position"):
-            position = self.camera.zoom_position(self.grid)
+            position = self.camera.zoom_position(self.grid, self.device_zoom())
         return position
+
+    def device_zoom(self) -> int:
+        """
+        the zoom level my device is asked for - the highest level it
+        serves that my grid's zoom is a multiple of
+
+        Returns:
+            the device zoom level
+        """
+        level = 1
+        for candidate in self.DEVICE_ZOOM_LEVELS:
+            if candidate <= self.grid.zoom:
+                level = candidate
+        return level
+
+    def digital_zoom(self) -> int:
+        """
+        the factor the device frame is magnified by beyond the device zoom
+
+        Returns:
+            the digital magnification - 1 when the device does it all
+        """
+        factor = max(1, self.grid.zoom // self.device_zoom())
+        return factor
 
     def apply_step(self) -> bool:
         """
@@ -96,21 +172,28 @@ class LiveView:
         next change is accepted, so at most one step is done per round and
         only by my capture loop - gphoto2 serves one caller
 
+        the device reports eoszoom and eoszoomposition stale, so what I
+        applied is tracked here and never read back
+
         Returns:
             True while the device is following a change and its frames are
             not the ones the grid asks for
         """
         position = self.position()
+        device_zoom = self.device_zoom()
         if self.settling > 0:
             self.settling -= 1
-        elif self.grid.zoom != self.applied_zoom:
-            self.camera.set_zoom_level(self.grid.zoom)
-            self.applied_zoom = self.grid.zoom
-            self.settling = self.SETTLE_FRAMES
+        elif device_zoom != self.applied_zoom:
+            self.camera.set_zoom_level(device_zoom)
+            self.applied_zoom = device_zoom
+            # the device recentres on a zoom change so the position that
+            # was applied before it is gone
+            self.applied_position = None
+            self.settling = self.SETTLE_ZOOM_FRAMES
         elif position is not None and position != self.applied_position:
             self.camera.set_zoom_position(position)
             self.applied_position = position
-            self.settling = self.SETTLE_FRAMES
+            self.settling = self.SETTLE_POSITION_FRAMES
         is_settling = self.settling > 0
         return is_settling
 
@@ -174,8 +257,11 @@ class LiveView:
         delay = self.delay()
         while self.running:
             try:
+                taken = time.time()
                 frame = self.camera.preview()
+                self.measure(taken)
                 if not self.apply_step():
+                    frame = self.grid.crop(frame, self.digital_zoom())
                     frame = self.grid.rotate(frame)
                     self.grid.update_from_jpeg(frame)
                     self.frame = frame
@@ -184,7 +270,12 @@ class LiveView:
                 self.error = ex
                 self.running = False
                 self.frame_event.set()
-            time.sleep(delay)
+            # the capture itself is most of the frame time so only the
+            # rest of it is waited out - sleeping the full delay would
+            # halve the rate the device can deliver
+            rest = delay - (time.time() - taken)
+            if rest > 0:
+                time.sleep(rest)
 
     def next_frame(self, timeout: float) -> Optional[bytes]:
         """

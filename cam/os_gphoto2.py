@@ -5,6 +5,7 @@ gphoto2 - operating system level gphoto2 camera / USB claim handling
 
 @author: wf
 """
+
 import sys
 import time
 from typing import Optional
@@ -81,7 +82,4 @@ class OsGPhoto2:
             if r.returncode != 0:
                 return
             # 20 checks per sec
-            time.sleep(1/20.0)
-            
-
-
+            time.sleep(1 / 20.0)

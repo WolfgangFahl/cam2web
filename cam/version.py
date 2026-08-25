@@ -3,6 +3,7 @@ Created on 2026-08-24
 
 @author: wf
 """
+
 from dataclasses import dataclass
 
 import cam

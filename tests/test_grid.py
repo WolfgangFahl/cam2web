@@ -57,3 +57,57 @@ class TestGridRotation(Basetest):
             self.assertEqual(expected, (grid.width, grid.height))
             if rotation == 0:
                 self.assertEqual(self.data, turned)
+
+    def test_to_sensor(self):
+        """
+        test that a point the user aims at is turned back to the sensor
+        """
+        expected = {
+            0: (0.25, 0.75),
+            90: (0.75, 0.75),
+            180: (0.75, 0.25),
+            270: (0.25, 0.25),
+        }
+        for rotation, sensor in expected.items():
+            grid = Grid(rotation=rotation)
+            result = grid.to_sensor(0.25, 0.75)
+            if self.debug:
+                print(f"{rotation}: 0.25,0.75 -> {result}")
+            self.assertEqual(sensor, result)
+
+    def test_to_display_is_the_inverse(self):
+        """
+        test that display and sensor fractions turn into each other
+        """
+        for rotation in [0, 90, 180, 270]:
+            grid = Grid(rotation=rotation)
+            sensor = grid.to_sensor(0.25, 0.75)
+            display = grid.to_display(*sensor)
+            if self.debug:
+                print(f"{rotation}: {sensor} -> {display}")
+            self.assertAlmostEqual(0.25, display[0])
+            self.assertAlmostEqual(0.75, display[1])
+
+    def test_to_display_box(self):
+        """
+        test that a box swaps its sides on a quarter turn
+        """
+        expected = {0: (0.2, 0.4), 90: (0.4, 0.2), 180: (0.2, 0.4), 270: (0.4, 0.2)}
+        for rotation, box in expected.items():
+            grid = Grid(rotation=rotation)
+            result = grid.to_display_box(0.2, 0.4)
+            if self.debug:
+                print(f"{rotation}: {result}")
+            self.assertEqual(box, result)
+
+    def test_crop(self):
+        """
+        test that the digital magnification crops around the centre
+        """
+        grid = Grid()
+        for factor, expected in [(1, (40, 20)), (2, (20, 10)), (4, (10, 5))]:
+            cropped = grid.crop(self.data, factor)
+            image = Image.open(BytesIO(cropped))
+            if self.debug:
+                print(f"{factor}: {image.width}x{image.height}")
+            self.assertEqual(expected, (image.width, image.height))

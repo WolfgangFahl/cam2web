@@ -3,6 +3,7 @@ Created on 2026-08-04
 
 @author: wf
 """
+
 import os
 import sys
 from dataclasses import dataclass, field
@@ -70,7 +71,7 @@ class OsCamera(Camera):
         state["rotation"] = rotation
         return state
 
-    def zoom_position(self, grid: Grid) -> Optional[str]:
+    def zoom_position(self, grid: Grid, level: Optional[int] = None) -> Optional[str]:
         """
         the eoszoomposition for the magnified area of the given grid
 
@@ -79,14 +80,17 @@ class OsCamera(Camera):
 
         Args:
             grid: the grid specifying zoom, x and y
+            level: the device zoom level the box is sized for - the grid's
+                zoom when not given
 
         Returns:
             the position as "x,y" or None when my sensor size is unknown
         """
         position = None
-        if self.grid and grid.zoom > 1:
-            box_width = self.grid.width // grid.zoom
-            box_height = self.grid.height // grid.zoom
+        zoom = level if level is not None else grid.zoom
+        if self.grid and zoom > 1:
+            box_width = self.grid.width // zoom
+            box_height = self.grid.height // zoom
             left = int(grid.x * self.grid.width) - box_width // 2
             top = int(grid.y * self.grid.height) - box_height // 2
             left = max(0, min(left, self.grid.width - box_width))

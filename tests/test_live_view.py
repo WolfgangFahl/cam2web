@@ -144,3 +144,93 @@ class TestLiveViewTuning(Basetest):
             if self.debug:
                 print(f"{grid}: {position}")
             self.assertEqual(expected, position)
+
+
+class FakeCamera:
+    """
+    a camera that only records what was asked of it
+    """
+
+    def __init__(self, width: int = 3888, height: int = 2592):
+        self.grid = Grid(width=width, height=height)
+        self.zoom_levels = []
+        self.positions = []
+
+    def zoom_position(self, grid: Grid, level: int = None) -> str:
+        """
+        the position as OsCamera computes it
+        """
+        position = OsCamera.zoom_position(self, grid, level)
+        return position
+
+    def set_zoom_level(self, level: int) -> None:
+        self.zoom_levels.append(level)
+
+    def set_zoom_position(self, position: str) -> None:
+        self.positions.append(position)
+
+
+class TestZoomSteps(Basetest):
+    """
+    test the zoom and position steps handed to the device - no device needed
+    """
+
+    def setUp(self, debug=True, profile=True):
+        Basetest.setUp(self, debug=debug, profile=profile)
+        self.camera = FakeCamera()
+        self.grid = Grid()
+        self.live_view = LiveView(grid=self.grid, camera=self.camera, fps=20.0)
+
+    def settle(self, rounds: int = 12) -> None:
+        """
+        let the apply steps run without a capture loop
+        """
+        for _ in range(rounds):
+            self.live_view.apply_step()
+
+    def test_device_and_digital_zoom(self):
+        """
+        test that zoom 10 is the device's 5 magnified twice more
+        """
+        expected = {1: (1, 1), 5: (5, 1), 10: (5, 2)}
+        for zoom, (device, digital) in expected.items():
+            self.grid.zoom = zoom
+            result = (self.live_view.device_zoom(), self.live_view.digital_zoom())
+            if self.debug:
+                print(f"zoom {zoom}: device,digital {result}")
+            self.assertEqual((device, digital), result)
+
+    def test_position_is_reapplied_after_a_zoom_change(self):
+        """
+        test that going back to the full view and magnifying again sends
+        the position anew - the device recentres on a zoom change
+        """
+        self.live_view.applied_zoom = 1
+        self.live_view.tune(5, 0.25, 0.25)
+        self.settle()
+        first = list(self.camera.positions)
+        self.live_view.tune(1, 0.25, 0.25)
+        self.settle()
+        self.live_view.tune(5, 0.25, 0.25)
+        self.settle()
+        if self.debug:
+            print(f"levels {self.camera.zoom_levels} positions {self.camera.positions}")
+        self.assertTrue(len(first) >= 1)
+        self.assertTrue(len(self.camera.positions) > len(first))
+        self.assertEqual(first[-1], self.camera.positions[-1])
+
+    def test_metadata(self):
+        """
+        test that the metadata shows what is going on
+        """
+        self.live_view.applied_zoom = 1
+        self.live_view.tune(10, 0.75, 0.25)
+        self.settle()
+        meta = self.live_view.metadata()
+        if self.debug:
+            print(meta)
+        self.assertEqual(10, meta["zoom"])
+        self.assertEqual(5, meta["device_zoom"])
+        self.assertEqual(2, meta["digital_zoom"])
+        self.assertEqual(0.75, meta["sensor_x"])
+        self.assertIsNotNone(meta["position"])

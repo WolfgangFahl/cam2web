@@ -6,6 +6,7 @@ see https://github.com/WolfgangFahl/scan2wiki/issues/33
 
 @author: wf
 """
+
 from typing import Any, ClassVar, Optional
 
 from basemkit.yamlable import lod_storable
@@ -18,20 +19,20 @@ class Camera:
     """
     a gphoto2 backed Camera
     """
+
     error: Optional[Exception] = None
     device: Optional[Any] = None
     config: Optional[Any] = None
     opened: bool = False
 
     _instance: ClassVar[Optional["Camera"]] = None
-    
+
     def ready(self) -> bool:
         """
         True when the camera device is initialized and error free
         """
         is_ready = self.error is None and self.device is not None
         return is_ready
-
 
     @classmethod
     def instance(cls, **kwargs) -> "Camera":
@@ -56,6 +57,7 @@ class Camera:
         camera = cls(**kwargs)
         try:
             import gphoto2 as gp
+
             camera.device = gp.Camera()
         except Exception as error:
             camera.error = error
@@ -104,7 +106,7 @@ class Camera:
         if self.opened:
             self.device.exit()
             self.opened = False
-            
+
     def set_config(self, key: str, value: object, do_set: bool = False):
         """
         set a single camera configuration value
