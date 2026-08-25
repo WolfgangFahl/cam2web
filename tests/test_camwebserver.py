@@ -108,6 +108,20 @@ class TestCam2WebServer(WebserverTest):
         Basetest.inPublicCI() or not os_camera().ready(),
         "no physical camera device available",
     )
+    def test_reset_usb(self):
+        """
+        test freeing the claimed device and opening the camera anew
+        """
+        state = self.ws.reset_usb()
+        if self.debug:
+            print(state)
+        self.assertTrue(state["present"])
+        self.assertTrue(state["open"])
+
+    @unittest.skipIf(
+        Basetest.inPublicCI() or not os_camera().ready(),
+        "no physical camera device available",
+    )
     def test_liveview_jpg(self):
         """
         test the /api/liveview.jpg endpoint

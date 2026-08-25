@@ -21,6 +21,7 @@ from nicegui.client import Client
 
 from cam.live_view import BOUNDARY, LiveView
 from cam.os_camera import OsCamera
+from cam.os_gphoto2 import OsGPhoto2
 from cam.version import Version
 
 BLANK_IMAGE = (
@@ -249,6 +250,21 @@ class Cam2WebServer(InputWebserver):
             self.live_view = LiveView(camera=self.get_camera(), fps=self.fps())
         return self.live_view
 
+    def reset_usb(self) -> dict:
+        """
+        free the claimed USB device and open the camera anew
+
+        Returns:
+            the state of the camera after the reset
+        """
+        self.get_live_view().stop()
+        camera = self.get_camera()
+        camera.close()
+        OsGPhoto2().free()
+        camera.open()
+        state = camera.state()
+        return state
+
     def liveview_jpg(self) -> Response:
         """
         one frame of the live view
@@ -313,14 +329,13 @@ class Cam2WebSolution(InputWebSolution):
         self.live_button = ui.button("Live view", icon="videocam", on_click=self.live)
         self.stop_button = ui.button("Stop", icon="stop", on_click=self.stop)
         self.check_button = ui.button("Check camera", icon="help")
-        self.reset_button = ui.button("Reset USB", icon="usb")
+        self.reset_button = ui.button("Reset USB", icon="usb", on_click=self.reset)
         self.rotate_left_button = ui.button(icon="rotate_left")
         self.rotate_right_button = ui.button(icon="rotate_right")
         self.magnify_switch = ui.switch("Magnify")
         for todo in [
             self.stop_button,
             self.check_button,
-            self.reset_button,
             self.rotate_left_button,
             self.rotate_right_button,
             self.magnify_switch,
@@ -367,6 +382,36 @@ class Cam2WebSolution(InputWebSolution):
         self.status.set_text("idle")
         self.stop_button.disable()
         self.live_button.enable()
+
+    def reset(self):
+        """
+        free the claimed USB device and open the camera anew - the live
+        view of all clients ends with it
+        """
+        self.image.set_source(BLANK_IMAGE)
+        self.stop_button.disable()
+        self.live_button.enable()
+        self.run_busy(
+            self.webserver.reset_usb,
+            status=self.status,
+            button=self.reset_button,
+            spinner=self.spinner,
+            on_result=self.show_state,
+            busy_text="resetting usb ...",
+            done_text="usb reset",
+            timeout=30.0,
+        )
+
+    def show_state(self, state: dict):
+        """
+        show the camera state in the status label
+
+        Args:
+            state: the camera state as delivered by the reset
+        """
+        present = state.get("present")
+        opened = state.get("open")
+        self.status.set_text(f"usb reset - present: {present} open: {opened}")
 
     def shoot(self):
         """

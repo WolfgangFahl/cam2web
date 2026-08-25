@@ -13,6 +13,7 @@ from PIL import Image
 
 from cam.camera import Camera
 from cam.camera_grid import Grid
+from cam.os_gphoto2 import OsGPhoto2
 
 try:
     import gphoto2 as gp
@@ -35,11 +36,18 @@ class OsCamera(Camera):
         """
         open the camera device and show my reference picture's grid
 
+        a claiming daemon such as ptpcamerad takes the device back as soon
+        as it is closed, so a failed claim is retried once after freeing it
+
         Returns:
             the Grid of my reference picture
         """
         grid = None
         Camera.open(self)
+        if not self.opened:
+            OsGPhoto2().free()
+            self.error = None
+            Camera.open(self)
         if self.ready():
             grid = self.reference_grid()
         self.grid = grid
