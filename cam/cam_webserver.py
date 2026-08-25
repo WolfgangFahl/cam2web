@@ -10,7 +10,7 @@ import os
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from ngwidgets.input_webserver import InputWebserver, InputWebSolution
 from ngwidgets.webserver import WebserverConfig
-from nicegui import app, run, ui
+from nicegui import app, background_tasks, run, ui
 from nicegui.client import Client
 
 from cam.os_camera import OsCamera
@@ -258,25 +258,43 @@ class Cam2WebSolution(InputWebSolution):
             with ui.column().classes("w-full gap-3") as self.container:
                 with ui.row().classes("items-center gap-2"):
                     self.setup_buttons()
+                    self.spinner = ui.spinner()
+                    self.spinner.set_visibility(False)
                     self.status = ui.label("idle")
                 self.image = ui.image("").style("max-width:70%;min-height:512px")
 
         await self.setup_content_div(setup_home)
 
-    async def shoot(self):
+    def shoot(self):
+        """
+        start a still capture in the background - the handler returns
+        at once so the event loop stays free, see
+        https://github.com/zauberzeug/nicegui/discussions/4053
+        """
+        with self.container:
+            self.shoot_button.disable()
+            self.status.set_text("shooting ...")
+            self.spinner.set_visibility(True)
+        background_tasks.create(self.do_shoot())
+
+    async def do_shoot(self):
         """
         capture a still for this client and show it - the picture is
         this client's own, not a shared one
         """
-        self.still_count += 1
-        with self.container:
-            self.shoot_button.disable()
-            self.status.set_text("shooting ...")
-        camera = self.webserver.get_camera()
-        data = await run.io_bound(camera.capture_still)
-        name = str(self.client.id)
-        self.webserver.save_still(name, data)
-        with self.container:
-            self.image.set_source(f"/stills/{name}.jpg?ts={self.still_count}")
-            self.status.set_text("still")
-            self.shoot_button.enable()
+        try:
+            camera = self.webserver.get_camera()
+            data = await run.io_bound(camera.capture_still)
+            self.still_count += 1
+            name = str(self.client.id)
+            self.webserver.save_still(name, data)
+            with self.container:
+                self.image.set_source(f"/stills/{name}.jpg?ts={self.still_count}")
+                self.status.set_text("still")
+        except Exception as ex:
+            with self.container:
+                self.status.set_text(f"shooting failed: {ex}")
+        finally:
+            with self.container:
+                self.spinner.set_visibility(False)
+                self.shoot_button.enable()
