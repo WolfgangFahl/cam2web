@@ -9,14 +9,17 @@ test the cam2web webserver REST interface
 import json
 import time
 import unittest
+from io import BytesIO
 
 from ngwidgets.basetest import Basetest
 from ngwidgets.webserver_test import WebserverTest
 from nicegui import core
+from PIL import Image
 
 from cam.cam2web_cmd import Cam2WebCmd
 from cam.cam_webserver import Cam2WebServer
 from cam.camera_grid import Grid
+from cam.live_view import LiveView
 from tests.test_oscamera import os_camera
 
 
@@ -150,3 +153,80 @@ class TestCam2WebServer(WebserverTest):
         if self.debug:
             print(summary)
         self.assertTrue(len(summary) > 0)
+
+
+class TestStillDuringLiveView(Basetest):
+    """
+    test that a still capture owns the device alone - no device needed
+    """
+
+    class FakeCamera:
+        """
+        a camera that refuses a capture while its live view runs, as the
+        device does with "[-110] I/O Operation in Arbeit"
+        """
+
+        def __init__(self):
+            self.grid = Grid(width=3888, height=2592)
+            self.live = False
+            self.captures = 0
+            image = Image.new("RGB", (768, 512), color=(10, 20, 30))
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG")
+            self.frame = buffer.getvalue()
+
+        def start_liveview(self, level: int = 1, position: str = None) -> None:
+            self.live = True
+
+        def stop_liveview(self) -> None:
+            self.live = False
+
+        def preview(self) -> bytes:
+            return self.frame
+
+        def capture_still(self) -> bytes:
+            if self.live:
+                raise Exception("[-110] I/O Operation in Arbeit")
+            self.captures += 1
+            return b"still"
+
+    def setUp(self, debug=True, profile=True):
+        Basetest.setUp(self, debug=debug, profile=profile)
+        self.camera = self.FakeCamera()
+        self.server = Cam2WebServer()
+        self.server.camera = self.camera
+        self.server.live_view = LiveView(grid=Grid(), camera=self.camera, fps=20.0)
+
+    def tearDown(self):
+        self.server.live_view.stop()
+        Basetest.tearDown(self)
+
+    def test_capture_still_switches_the_live_view_off_and_on(self):
+        """
+        test that a still taken while the live view runs succeeds and
+        leaves the live view running for the viewers
+        """
+        live_view = self.server.live_view
+        live_view.viewers = 1
+        live_view.start()
+        self.assertTrue(live_view.running)
+        data = self.server.capture_still()
+        if self.debug:
+            print(f"captures {self.camera.captures} running {live_view.running}")
+        self.assertEqual(b"still", data)
+        self.assertEqual(1, self.camera.captures)
+        self.assertTrue(live_view.running)
+
+    def test_capture_still_leaves_the_live_view_off_without_viewers(self):
+        """
+        test that a still taken without viewers does not restart the
+        live view
+        """
+        live_view = self.server.live_view
+        live_view.viewers = 0
+        live_view.start()
+        data = self.server.capture_still()
+        if self.debug:
+            print(f"running after capture {live_view.running}")
+        self.assertEqual(b"still", data)
+        self.assertFalse(live_view.running)
