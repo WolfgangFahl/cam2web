@@ -24,7 +24,8 @@ class TestLiveView(Basetest):
     def setUp(self, debug=True, profile=True):
         Basetest.setUp(self, debug=debug, profile=profile)
         self.camera = os_camera()
-        self.live_view = LiveView(camera=self.camera, fps=5.0)
+        self.grid = Grid()
+        self.live_view = LiveView(grid=self.grid, camera=self.camera, fps=5.0)
 
     def tearDown(self):
         self.live_view.stop()
@@ -66,6 +67,9 @@ class TestLiveView(Basetest):
             print(f"live view frame: {grid} {len(frame)} bytes")
         self.assertTrue(grid.width > 0)
         self.assertTrue(grid.height > 0)
+        self.assertEqual(grid.width, self.grid.width)
+        self.assertEqual(grid.height, self.grid.height)
+        self.assertEqual(1, self.grid.zoom)
         self.assertTrue(self.live_view.running)
         self.live_view.stop()
         self.assertFalse(self.live_view.running)

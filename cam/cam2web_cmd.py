@@ -12,7 +12,7 @@ from argparse import ArgumentParser
 
 from ngwidgets.cmd import WebserverCmd
 
-from cam.cam_webserver import Cam2WebServer, Cam2WebSolution
+from cam.cam_webserver import Cam2WebServer
 
 
 class Cam2WebCmd(WebserverCmd):

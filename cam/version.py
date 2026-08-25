@@ -18,7 +18,7 @@ class Version(object):
     version = cam.__version__
     description = "gphoto2 camera web interface"
     date = "2026-08-20"
-    updated = "2026-08-24"
+    updated = "2026-08-25"
 
     authors = "Wolfgang Fahl"
 

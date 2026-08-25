@@ -1,8 +1,8 @@
-'''
-Created on 24.08.2026
+"""
+Created on 2026-08-24
 
 @author: wf
-'''
+"""
 from typing import Optional
 
 import os
@@ -19,6 +19,7 @@ from ngwidgets.webserver import WebserverConfig
 from nicegui import app, ui
 from nicegui.client import Client
 
+from cam.camera_grid import Grid
 from cam.live_view import BOUNDARY, LiveView
 from cam.os_camera import OsCamera
 from cam.os_gphoto2 import OsGPhoto2
@@ -247,7 +248,10 @@ class Cam2WebServer(InputWebserver):
             the shared LiveView of my camera
         """
         if self.live_view is None:
-            self.live_view = LiveView(camera=self.get_camera(), fps=self.fps())
+            grid = Grid()
+            self.live_view = LiveView(
+                grid=grid, camera=self.get_camera(), fps=self.fps()
+            )
         return self.live_view
 
     def reset_usb(self) -> dict:

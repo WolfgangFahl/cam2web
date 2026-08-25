@@ -14,6 +14,7 @@ import time
 from typing import AsyncGenerator, Optional
 
 from cam.camera import Camera
+from cam.camera_grid import Grid
 
 BOUNDARY = "frame"
 
@@ -26,14 +27,16 @@ class LiveView:
     are fed from the latest frame of my own capture loop
     """
 
-    def __init__(self, camera: Camera, fps: float = 10.0):
+    def __init__(self, grid: Grid, camera: Camera, fps: float = 10.0):
         """
-        construct me for the given camera
+        construct me for the given grid and camera
 
         Args:
+            grid: the specification of the view I serve
             camera: the camera to capture preview frames from
             fps: the maximum frames per second to capture with
         """
+        self.grid = grid
         self.camera = camera
         self.fps = fps
         self.frame: Optional[bytes] = None
@@ -43,18 +46,16 @@ class LiveView:
         self.lock = threading.RLock()
         self.thread: Optional[threading.Thread] = None
 
-    def start(self, level: int = 1) -> None:
+    def start(self) -> None:
         """
-        switch the camera to live view and start my capture loop
-
-        Args:
-            level: the zoom level to start with
+        switch the camera to the live view of my grid and start my capture
+        loop
         """
         with self.lock:
             if not self.running:
                 self.error = None
                 try:
-                    self.camera.start_liveview(level)
+                    self.camera.start_liveview(self.grid.zoom)
                     self.running = True
                     self.thread = threading.Thread(
                         target=self.capture_loop, daemon=True
@@ -98,7 +99,9 @@ class LiveView:
         delay = self.delay()
         while self.running:
             try:
-                self.frame = self.camera.preview()
+                frame = self.camera.preview()
+                self.grid.update_from_jpeg(frame)
+                self.frame = frame
             except Exception as ex:
                 self.error = ex
                 self.running = False

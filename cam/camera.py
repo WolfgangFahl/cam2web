@@ -143,7 +143,7 @@ class Camera:
         """
         self.start_liveview(level)
         data = self.preview()
-        grid = Grid.from_jpeg(data)
+        grid = Grid.from_jpeg(data, zoom=level)
         return grid
 
     def start_liveview(self, level: int = 1) -> None:

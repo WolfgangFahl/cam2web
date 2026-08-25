@@ -90,7 +90,7 @@ class TestCamera(Basetest):
         expected_grids = {
             "full": self.camera.reference_grid(),
             "liveview": Grid(768, 512, 0),
-            "magnify": Grid(768, 512, 0),
+            "magnify": Grid(768, 512, 0, 5),
         }
         for name, grid in grids.items():
             self.check_grid(name, expected_grids[name], grid)
