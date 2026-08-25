@@ -4,7 +4,8 @@ Created on 2026-08-04
 @author: wf
 """
 import os
-from dataclasses import dataclass
+import sys
+from dataclasses import dataclass, field
 from io import BytesIO
 from typing import ClassVar, Optional
 
@@ -26,6 +27,7 @@ class OsCamera(Camera):
     """
 
     base_path: Optional[str] = None
+    grid: Optional[Grid] = field(default=None, compare=False, repr=False)
 
     ROTATION_BY_ORIENTATION: ClassVar[dict] = {1: 0, 3: 180, 6: 90, 8: 270}
 
@@ -40,7 +42,25 @@ class OsCamera(Camera):
         Camera.open(self)
         if self.ready():
             grid = self.reference_grid()
+        self.grid = grid
         return grid
+
+    def state(self) -> dict:
+        """
+        my operating system level state - the device part is delegated
+        to Camera
+
+        Returns:
+            the camera state as a dict
+        """
+        state = Camera.state(self)
+        width = self.grid.width if self.grid else 0
+        height = self.grid.height if self.grid else 0
+        rotation = self.grid.rotation if self.grid else 0
+        state["platform"] = sys.platform
+        state["size"] = {"width": width, "height": height}
+        state["rotation"] = rotation
+        return state
 
     def reference_path(self) -> str:
         """

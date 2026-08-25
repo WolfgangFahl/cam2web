@@ -3,6 +3,8 @@ Created on 2026-08-20
 
 camera - camera handling of cam2web
 see https://github.com/WolfgangFahl/scan2wiki/issues/33
+
+@author: wf
 """
 from typing import Any, ClassVar, Optional
 
@@ -57,6 +59,30 @@ class Camera:
         except Exception as error:
             camera.error = error
         return camera
+
+    def summary(self) -> str:
+        """
+        the gphoto2 summary of my device
+
+        Returns:
+            the summary text
+        """
+        self.open()
+        summary = self.device.get_summary().text if self.device is not None else "N/A"
+        return summary
+
+    def state(self) -> dict:
+        """
+        my device level state
+
+        Returns:
+            the device state as a dict
+        """
+        state = {
+            "present": self.device is not None,
+            "open": self.opened,
+        }
+        return state
 
     def open(self):
         """
