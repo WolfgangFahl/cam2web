@@ -71,7 +71,7 @@ class Cam2WebServer(InputWebserver):
         Returns:
             the configured base path or None
         """
-        base_path = getattr(getattr(self, "args", None), "base_path", None)
+        base_path = self.config.base_path
         return base_path
 
     def fps(self) -> float:
